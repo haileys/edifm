@@ -1,15 +1,24 @@
+#[macro_use]
+extern crate diesel;
+
+extern crate chrono;
+extern crate dotenv;
 extern crate lame;
 extern crate minimp3;
 extern crate rand;
 
-use std::fs::{self, File};
+mod db;
+
+use std::fs::File;
 use std::io::{self, Read, Write};
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Instant, Duration};
 
+use diesel::pg::PgConnection;
+use dotenv::dotenv;
 use lame::{Lame, EncodeError};
 use minimp3::{Decoder, Frame};
-use rand::{thread_rng, Rng};
 
 const SAMPLE_RATE: usize = 44100;
 const CHANNELS: u8 = 2;
@@ -132,37 +141,73 @@ impl<T> Reader<T> where T: Read {
 enum Error {
     Io(io::Error),
     Broadcast(BroadcastError),
+    Database(diesel::result::Error),
 }
 
-fn run_station(outputs: &mut [&mut StreamOutput]) -> Result<(), Error> {
-    let tracks = fs::read_dir("catalog").map_err(Error::Io)?
-        .collect::<Result<Vec<_>, _>>().map_err(Error::Io)?;
+struct Station<'a> {
+    conn: PgConnection,
+    outputs: Vec<&'a mut StreamOutput>,
+}
 
-    let mut rng = thread_rng();
-    let track = rng.choose(&tracks).expect("rng.choose");
-
-    let mp3 = File::open(track.path()).map_err(Error::Io)?;
-
-    let mut reader = Reader::new(Decoder::new(mp3));
-
-    loop {
-        match reader.read() {
-            Ok(frame) => {
-                for output in outputs.iter_mut() {
-                    output.write(&frame).map_err(Error::Broadcast)?;
-                }
-            }
-            Err(minimp3::Error::Io(e)) => return Err(Error::Io(e)),
-            Err(minimp3::Error::InsufficientData) => panic!("InsufficientData"),
-            Err(minimp3::Error::SkippedData) => continue,
-            Err(minimp3::Error::Eof) => break,
-        }
+impl<'a> Station<'a> {
+    pub fn new(outputs: Vec<&'a mut StreamOutput>) -> Self {
+        Station { conn: db::connect(), outputs }
     }
 
-    Ok(())
+    fn load_next(&self) -> Result<Option<Reader<File>>, Error> {
+        let (program, recording) = match db::select_next_recording(&self.conn).map_err(Error::Database)? {
+            Some(result) => result,
+            None => return Ok(None),
+        };
+
+        println!("Now playing: {} - {}", recording.title, recording.artist);
+
+        let path = PathBuf::from("catalog").join(&recording.filename);
+
+        let file = File::open(path).map_err(Error::Io)?;
+
+        db::insert_play_record(&self.conn, program, recording);
+
+        Ok(Some(Reader::new(Decoder::new(file))))
+    }
+
+    fn play(&mut self, mut reader: Reader<File>) -> Result<(), Error> {
+        loop {
+            match reader.read() {
+                Ok(frame) => {
+                    for output in self.outputs.iter_mut() {
+                        output.write(&frame).map_err(Error::Broadcast)?;
+                    }
+                }
+                Err(minimp3::Error::Io(e)) => return Err(Error::Io(e)),
+                Err(minimp3::Error::InsufficientData) => panic!("InsufficientData"),
+                Err(minimp3::Error::SkippedData) => continue,
+                Err(minimp3::Error::Eof) => break,
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<(), Error> {
+        loop {
+            match self.load_next()? {
+                None => {
+                    // couldn't find anything to play in the database
+                    // sleep for 1 second to avoid smashing the CPU
+                    thread::sleep(Duration::from_secs(1));
+                }
+                Some(reader) => {
+                    self.play(reader)?;
+                }
+            }
+        }
+    }
 }
 
 fn main() -> Result<(), Error> {
+    dotenv().ok();
+
     let mut hi = BroadcastEncoder::new(320,
         File::create("stream-hi.mp3")
             .map_err(Error::Io)?);
@@ -171,8 +216,10 @@ fn main() -> Result<(), Error> {
         File::create("stream-lo.mp3")
             .map_err(Error::Io)?);
 
-    run_station(&mut [
+    let mut station = Station::new(vec![
         &mut hi,
         &mut lo,
-    ])
+    ]);
+
+    station.run()
 }
