@@ -8,6 +8,7 @@ extern crate minimp3;
 extern crate rand;
 
 mod db;
+mod icecast;
 
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -210,11 +211,11 @@ fn main() -> Result<(), Error> {
     dotenv().ok();
 
     let mut hi = BroadcastEncoder::new(320,
-        File::create("stream-hi.mp3")
+        icecast::SourceStream::new("127.0.0.1:8000", "/live.mp3")
             .map_err(Error::Io)?);
 
     let mut lo = BroadcastEncoder::new(128,
-        File::create("stream-lo.mp3")
+        icecast::SourceStream::new("127.0.0.1:8000", "/low.mp3")
             .map_err(Error::Io)?);
 
     let mut station = Station::new(vec![
