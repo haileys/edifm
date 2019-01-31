@@ -36,19 +36,6 @@ pub mod models {
     }
 }
 
-pub fn current_program(conn: &PgConnection) -> Result<Option<models::Program>, diesel::result::Error> {
-    use schema::programs::dsl::*;
-
-    let now_subsec = Local::now().time();
-    let now = NaiveTime::from_hms(now_subsec.hour(), now_subsec.minute(), now_subsec.second());
-
-    programs
-        .filter(starts_at.le(now))
-        .filter(ends_at.ge(now))
-        .first(conn)
-        .optional()
-}
-
 pub fn select_next_recording(conn: &PgConnection)
     -> Result<Option<(models::Program, models::Recording)>, diesel::result::Error>
 {
