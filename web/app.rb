@@ -8,3 +8,8 @@ get "/" do
   @play = Play.latest
   erb :index
 end
+
+get "/_playing" do
+  @play = Play.latest
+  erb :_playing
+end

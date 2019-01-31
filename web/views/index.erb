@@ -79,10 +79,7 @@
         <div id="currently-playing">
             <h2>currently playing</h2>
             <p id="currently-playing-text">
-                <%= @play.recording.title %> &mdash; <%= @play.recording.artist %>
-                <% if @play.recording.link %>
-                    <a href="<%= @play.recording.link %>"><%= URI.parse(@play.recording.link).host %></a>
-                <% end %>
+                <%= erb :_playing %>
             </p>
         </div>
         <a class="stream-link" href="https://edifm.org/live.mp3">high quality (320kbps)</a>
@@ -109,6 +106,16 @@
                 });
             }
         };
+
+        function updatePlaying() {
+            fetch("/_playing").then(request => {
+                request.text().then(html => {
+                    document.getElementById("currently-playing-text").innerHTML = html;
+                })
+            });
+        }
+
+        setInterval(updatePlaying, 30*1000);
     })();
 </script>
 </html>

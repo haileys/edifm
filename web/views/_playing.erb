@@ -1,0 +1,4 @@
+<%= @play.recording.title %> &mdash; <%= @play.recording.artist %>
+<% if @play.recording.link %>
+    <a href="<%= @play.recording.link %>"><%= URI.parse(@play.recording.link).host %></a>
+<% end %>
