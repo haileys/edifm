@@ -5,7 +5,7 @@ use std::env;
 use chrono::{Local, DateTime, NaiveTime, Timelike};
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use rand::{thread_rng, Rng};
+use rand::seq::SliceRandom;
 
 pub fn connect() -> PgConnection {
     let database_url = env::var("DATABASE_URL")
@@ -68,7 +68,7 @@ pub fn select_next_recording(conn: &PgConnection)
 
     let results = query.get_results::<(i32, i32)>(conn)?;
 
-    let selection = thread_rng().choose(&results);
+    let selection = results.choose(&mut rand::thread_rng());
 
     match selection {
         None => Ok(None),
