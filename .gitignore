@@ -1,5 +1,7 @@
 /build/cache
 /target
 /tmp
+/web/.bundle
+/web/vendor/gems
 *.swp
 .DS_Store

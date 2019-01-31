@@ -1,0 +1,10 @@
+require "sinatra"
+require "active_record"
+require_relative "lib/models"
+
+ActiveRecord::Base.establish_connection(ENV.fetch("DATABASE_URL"))
+
+get "/" do
+  @play = Play.latest
+  erb :index
+end

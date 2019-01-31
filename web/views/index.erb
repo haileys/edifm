@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+    <title>ediFM</title>
+    <style>
+        body {
+            font-family:Verdana;
+        }
+        a {
+            color:#339933;
+        }
+        a:hover {
+            color:#66cc66;
+        }
+        .container {
+            width:300px;
+            margin:100px auto;
+        }
+        h1 {
+            color:#66cc66;
+            font-size:90px;
+            text-align:center;
+            margin:0px;
+            padding:0px;
+            margin-bottom:12px;
+        }
+        p {
+            font-size:14px;
+            text-align:center;
+            color:#333333;
+        }
+        #listen-now {
+            border:none;
+            outline:none;
+            background-color:#66cc66;
+            color:#ffffff;
+            font-size:24px;
+            cursor:pointer;
+            padding:12px 0px;
+            width:300px;
+            margin-top:12px;
+            margin-bottom:24px;
+        }
+        #listen-now:hover {
+            background-color:#77dd77;
+        }
+        #currently-playing {
+            margin-bottom:24px;
+        }
+        #currently-playing h2 {
+            margin:0px;
+            font-weight:normal;
+            font-size:14px;
+            text-align:center;
+            color:#999999;
+        }
+        #currently-playing p {
+            margin-top:4px;
+            color:#333333;
+        }
+        #currently-playing a {
+            /*margin-top:4px;
+            display:block;*/
+        }
+        .stream-link {
+            text-align:center;
+            display:block;
+            margin-bottom:4px;
+            font-size:14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ediFM</h1>
+        <p>on a gorgeous afternoon in the park, all you need is the sound of ediFM</p>
+        <p>lovely tunes, no commercials, good times</p>
+        <button id="listen-now">&#x25b6; Listen now</button>
+        <div id="currently-playing">
+            <h2>currently playing</h2>
+            <p id="currently-playing-text">
+                <%= @play.recording.title %> &mdash; <%= @play.recording.artist %>
+                <% if @play.recording.link %>
+                    <a href="<%= @play.recording.link %>"><%= URI.parse(@play.recording.link).host %></a>
+                <% end %>
+            </p>
+        </div>
+        <a class="stream-link" href="https://edifm.org/live.mp3">high quality (320kbps)</a>
+        <a class="stream-link" href="https://edifm.org/low.mp3">low quality (128kbps)</a>
+    </div>
+</body>
+<script>
+    (function() {
+        var button = document.getElementById("listen-now");
+        var audio = null;
+
+        button.onclick = function() {
+            if (audio) {
+                audio.src = "";
+                audio.pause();
+                audio = null;
+                button.innerHTML = "&#x25b6; Listen now";
+            } else {
+                button.innerHTML = "loading...";
+                audio = new Audio("https://edifm.org/live.mp3");
+                audio.play();
+                audio.addEventListener("playing", function() {
+                    button.innerHTML = "&#x25a0;";
+                });
+            }
+        };
+    })();
+</script>
+</html>
