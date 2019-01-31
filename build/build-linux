@@ -1,0 +1,25 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+TARGET_DIR="$(pwd)/target"
+CACHE_DIR="$(pwd)/build/cache"
+
+IMAGE_ID="$(docker build -q build)"
+
+mkdir -p "$TARGET_DIR"
+mkdir -p "$CACHE_DIR"
+
+docker run -t -i \
+    --volume "$(pwd)":/workspace/src:ro \
+    --volume "$CACHE_DIR":/workspace/build/cache \
+    --volume "$TARGET_DIR":/workspace/target \
+    --workdir /workspace \
+    "$IMAGE_ID" \
+    /bin/bash -c '
+        set -e
+        export PATH=/root/.cargo/bin:$PATH
+        export CARGO_HOME=/workspace/build/cache
+        export CARGO_TARGET_DIR=/workspace/target/x86_64-unknown-linux-gnu
+        cd src
+        cargo build --release
+    '
