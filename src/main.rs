@@ -166,7 +166,8 @@ impl<'a> Station<'a> {
 
         let file = File::open(path).map_err(Error::Io)?;
 
-        db::insert_play_record(&self.conn, program, recording);
+        db::insert_play_record(&self.conn, program, recording)
+            .map_err(Error::Database)?;
 
         Ok(Some(Reader::new(Decoder::new(file))))
     }
