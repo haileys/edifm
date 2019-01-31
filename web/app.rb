@@ -1,5 +1,5 @@
-require "sinatra"
 require "active_record"
+require "sinatra"
 require_relative "lib/models"
 
 ActiveRecord::Base.establish_connection(ENV.fetch("DATABASE_URL"))
