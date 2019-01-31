@@ -57,6 +57,15 @@ pub fn select_next_recording(conn: &PgConnection)
 
     use schema;
 
+    let now_subsec = Local::now().time();
+    let now = NaiveTime::from_hms(now_subsec.hour(), now_subsec.minute(), now_subsec.second());
+
+    let previous_two_tunes = schema::plays::table
+        .order(schema::plays::id.desc())
+        .select(schema::plays::recording_id)
+        .limit(2)
+        .get_results::<i32>(conn)?;
+
     let query = schema::recordings::table
         .inner_join(schema::recording_tags::table.on(schema::recordings::id.eq(schema::recording_tags::recording_id)))
         .inner_join(schema::program_tags::table.on(schema::program_tags::tag_id.eq(schema::recording_tags::tag_id)))
@@ -64,6 +73,9 @@ pub fn select_next_recording(conn: &PgConnection)
         .left_join(schema::plays::table.on(schema::plays::recording_id.eq(schema::recordings::id)))
         .group_by((schema::programs::id, schema::recordings::id))
         .order(sql::<Integer>("COUNT(plays.*)").asc())
+        .filter(schema::programs::starts_at.le(now))
+        .filter(schema::programs::ends_at.ge(now))
+        .filter(schema::recordings::id.ne_all(&previous_two_tunes))
         .limit(5)
         .select((schema::programs::id, schema::recordings::id));
 
