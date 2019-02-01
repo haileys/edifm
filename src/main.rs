@@ -11,7 +11,8 @@ mod db;
 mod icecast;
 mod stream;
 
-use std::fs::File;
+use std::env;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::thread;
@@ -71,13 +72,13 @@ enum Error {
     Database(diesel::result::Error),
 }
 
-struct Station<'a> {
+struct Station {
     conn: PgConnection,
-    outputs: Vec<&'a mut StreamOutput>,
+    outputs: Vec<Box<StreamOutput>>,
 }
 
-impl<'a> Station<'a> {
-    pub fn new(outputs: Vec<&'a mut StreamOutput>) -> Self {
+impl Station {
+    pub fn new(outputs: Vec<Box<StreamOutput>>) -> Self {
         Station { conn: db::connect(), outputs }
     }
 
@@ -136,18 +137,24 @@ impl<'a> Station<'a> {
 fn main() -> Result<(), Error> {
     dotenv().ok();
 
-    let mut hi = BroadcastEncoder::new(320,
-        icecast::SourceStream::new("127.0.0.1:8000", "/live.mp3")
-            .map_err(Error::Io)?);
+    let outputs = match env::var("EDIFM_TARGET").as_ref().map(String::as_str) {
+        Ok("icecast") => vec![
+            Box::new(BroadcastEncoder::new(320,
+                icecast::SourceStream::new("127.0.0.1:8000", "/live.mp3")
+                    .map_err(Error::Io)?)) as Box<StreamOutput>,
 
-    let mut lo = BroadcastEncoder::new(128,
-        icecast::SourceStream::new("127.0.0.1:8000", "/low.mp3")
-            .map_err(Error::Io)?);
+            Box::new(BroadcastEncoder::new(128,
+                icecast::SourceStream::new("127.0.0.1:8000", "/low.mp3")
+                    .map_err(Error::Io)?)) as Box<StreamOutput>,
+        ],
+        _ => vec![
+            Box::new(BroadcastEncoder::new(320,
+                OpenOptions::new().create(true).append(true).open("stream.mp3")
+                    .map_err(Error::Io)?)) as Box<StreamOutput>,
+        ],
+    };
 
-    let mut station = Station::new(vec![
-        &mut hi,
-        &mut lo,
-    ]);
+    let mut station = Station::new(outputs);
 
     station.run()
 }
