@@ -6,8 +6,10 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
+crossbeam = "0.7"
 diesel = { version = "1.0.0", features = ["postgres", "chrono"] }
 dotenv = "0.9.0"
 lame = "0.1"
-minimp3 = "0.3"
+minimp3 = { git = "https://github.com/haileys/minimp3-rs", branch = "reader-accessors" }
 rand = "0.6"
+signal-hook = "0.1"
