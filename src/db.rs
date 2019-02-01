@@ -53,10 +53,10 @@ pub fn select_next_recording(conn: &PgConnection)
     let now_subsec = Local::now().time();
     let now = NaiveTime::from_hms(now_subsec.hour(), now_subsec.minute(), now_subsec.second());
 
-    let previous_two_tunes = schema::plays::table
+    let recently_played = schema::plays::table
         .order(schema::plays::id.desc())
         .select(schema::plays::recording_id)
-        .limit(2)
+        .limit(5)
         .get_results::<i32>(conn)?;
 
     let query = schema::recordings::table
@@ -69,7 +69,7 @@ pub fn select_next_recording(conn: &PgConnection)
         .filter(schema::programs::starts_at.le(now))
         .filter(schema::programs::ends_at.ge(now))
         .filter(schema::recordings::id.ne_all(&previous_two_tunes))
-        .limit(5)
+        .limit(8)
         .select((schema::programs::id, schema::recordings::id));
 
     let results = query.get_results::<(i32, i32)>(conn)?;
