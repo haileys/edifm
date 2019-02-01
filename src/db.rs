@@ -36,6 +36,12 @@ pub mod models {
     }
 }
 
+pub fn find_recording(conn: &PgConnection, recording_id: i32)
+    -> Result<models::Recording, diesel::result::Error>
+{
+    schema::recordings::table.find(recording_id).first(conn)
+}
+
 pub fn select_next_recording(conn: &PgConnection)
     -> Result<Option<(models::Program, models::Recording)>, diesel::result::Error>
 {
@@ -74,7 +80,7 @@ pub fn select_next_recording(conn: &PgConnection)
         None => Ok(None),
         Some((program_id, recording_id)) => {
             let program = schema::programs::table.find(program_id).first(conn)?;
-            let recording = schema::recordings::table.find(recording_id).first(conn)?;
+            let recording = find_recording(conn, *recording_id)?;
             Ok(Some((program, recording)))
         }
     }

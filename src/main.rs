@@ -16,10 +16,12 @@ mod stream;
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
+use std::process::Command;
+use std::sync::atomic::{Ordering, AtomicBool};
 use std::thread;
 use std::time::{Instant, Duration};
-use std::sync::atomic::{Ordering, AtomicBool};
 
 use diesel::pg::PgConnection;
 use dotenv::dotenv;
@@ -124,8 +126,8 @@ struct Station<'a> {
 }
 
 impl<'a> Station<'a> {
-    pub fn new(run: &'a AtomicBool, outputs: Vec<Box<StreamOutput>>) -> Self {
-        Station { run, conn: db::connect(), outputs }
+    pub fn new(conn: PgConnection, run: &'a AtomicBool, outputs: Vec<Box<StreamOutput>>) -> Self {
+        Station { run, conn, outputs }
     }
 
     fn load_next(&self) -> Result<Option<LoadedRecording>, Error> {
@@ -214,19 +216,56 @@ fn outputs() -> Result<Vec<Box<StreamOutput>>, io::Error> {
     }
 }
 
-fn run_station(run: &AtomicBool) -> Result<ResumeInfo, Error> {
+fn run_station(conn: PgConnection, run: &AtomicBool, resume: Option<ResumeInfo>) -> Result<ResumeInfo, Error> {
     let outputs = outputs().map_err(Error::Io)?;
-    Station::new(run, outputs).run(None)
+    Station::new(conn, run, outputs).run(resume)
+}
+
+#[derive(Debug)]
+enum ParseResumeInfoError {
+    MalformedEnv,
+    Database(diesel::result::Error),
+}
+
+fn parse_resume_info(conn: &PgConnection, resume_info_str: &str) -> Result<ResumeInfo, ParseResumeInfoError> {
+    let colon_pos = resume_info_str.find(':')
+        .ok_or(ParseResumeInfoError::MalformedEnv)?;
+
+    let (recording_id_str, file_pos_str) = resume_info_str.split_at(colon_pos);
+
+    let recording_id = recording_id_str.parse()
+        .map_err(|_| ParseResumeInfoError::MalformedEnv)?;
+
+    let file_pos = file_pos_str[1..].parse()
+        .map_err(|_| ParseResumeInfoError::MalformedEnv)?;
+
+    let recording = db::find_recording(conn, recording_id)
+        .map_err(ParseResumeInfoError::Database)?;
+
+    Ok(ResumeInfo { recording, file_pos })
 }
 
 fn main() -> Result<(), Error> {
     dotenv().ok();
 
+    let conn = db::connect();
+
     let signals = Signals::new(&[SIGHUP]).expect("Signals::new");
     let run = AtomicBool::new(true);
 
+    let resume = match env::var("EDIFM_RESUME") {
+        Ok(val) => { println!("EDIFM_RESUME={:?}", val); match parse_resume_info(&conn, &val) {
+            Ok(resume_info) => Some(resume_info),
+            Err(e) => {
+                eprintln!("could not resume from EDIFM_RESUME: {:?}", e);
+                None
+            }
+        } },
+        Err(_) => None,
+    };
+
     crossbeam::scope(|scope| {
-        let station_thread = scope.spawn(|_| match run_station(&run) {
+        let station_thread = scope.spawn(|_| match run_station(conn, &run, resume) {
             Ok(resume_info) => resume_info,
             Err(e) => panic!("run_station: {:?}", e),
         });
@@ -234,10 +273,23 @@ fn main() -> Result<(), Error> {
         for signal in signals.forever() {
             match signal {
                 SIGHUP => {
+                    println!("SIGHUP received, gracefully restarting...");
+
+                    // tell station to stop
                     run.store(false, Ordering::Relaxed);
+
+                    // collect resume info when station quiesces
                     let resume_info = station_thread.join().expect("station_thread.join");
                     println!("resume_info: {:?}", resume_info);
-                    break;
+
+                    // re-exec ourselves with the same command line we were invoked with
+                    let args = std::env::args_os().collect::<Vec<_>>();
+                    let err = Command::new(&args[0])
+                        .env("EDIFM_RESUME", format!("{}:{}", resume_info.recording.id, resume_info.file_pos))
+                        .args(&args[1..])
+                        .exec();
+
+                    panic!("could not re-exec self! {:?}", err)
                 }
                 _ => {}
             }
