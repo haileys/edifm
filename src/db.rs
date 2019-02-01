@@ -68,7 +68,7 @@ pub fn select_next_recording(conn: &PgConnection)
         .order(sql::<Integer>("COUNT(plays.*)").asc())
         .filter(schema::programs::starts_at.le(now))
         .filter(schema::programs::ends_at.ge(now))
-        .filter(schema::recordings::id.ne_all(&previous_two_tunes))
+        .filter(schema::recordings::id.ne_all(&recently_played))
         .limit(8)
         .select((schema::programs::id, schema::recordings::id));
 
