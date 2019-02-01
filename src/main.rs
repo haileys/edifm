@@ -254,13 +254,13 @@ fn main() -> Result<(), Error> {
     let run = AtomicBool::new(true);
 
     let resume = match env::var("EDIFM_RESUME") {
-        Ok(val) => { println!("EDIFM_RESUME={:?}", val); match parse_resume_info(&conn, &val) {
+        Ok(val) => match parse_resume_info(&conn, &val) {
             Ok(resume_info) => Some(resume_info),
             Err(e) => {
                 eprintln!("could not resume from EDIFM_RESUME: {:?}", e);
                 None
             }
-        } },
+        },
         Err(_) => None,
     };
 
@@ -280,7 +280,6 @@ fn main() -> Result<(), Error> {
 
                     // collect resume info when station quiesces
                     let resume_info = station_thread.join().expect("station_thread.join");
-                    println!("resume_info: {:?}", resume_info);
 
                     // re-exec ourselves with the same command line we were invoked with
                     let args = std::env::args_os().collect::<Vec<_>>();
