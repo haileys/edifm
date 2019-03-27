@@ -13,3 +13,9 @@ lame = "0.1"
 minimp3 = { git = "https://github.com/haileys/minimp3-rs", branch = "reader-accessors" }
 rand = "0.6"
 signal-hook = "0.1"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
