@@ -3,7 +3,6 @@ use std::io::{self, Write};
 use lame::{Lame, EncodeError};
 use minimp3::Frame;
 
-pub const SAMPLE_RATE: usize = 44100;
 pub const CHANNELS: u8 = 2;
 pub const QUALITY: u8 = 0;
 
@@ -25,7 +24,6 @@ impl<T> BroadcastEncoder<T> where T: Write {
         lame.set_kilobitrate(kilobitrate as i32).expect("set_kilobitrate");
         lame.set_quality(QUALITY).expect("set_quality");
         lame.set_channels(CHANNELS).expect("set_channels");
-        lame.set_sample_rate(SAMPLE_RATE as u32).expect("set_sample_rate");
         lame.init_params().expect("init_params");
 
         BroadcastEncoder { output, lame, mp3_buffer: vec![0; 4096] }
@@ -57,6 +55,9 @@ impl<T> StreamOutput for BroadcastEncoder<T> where T: Write {
         }
 
         let (left, right) = deinterleave(frame.channels, &frame.data);
+
+        self.lame.set_sample_rate(frame.sample_rate as u32)
+            .expect("set_sample_rate");
 
         loop {
             match self.lame.encode(&left, &right, &mut self.mp3_buffer) {

@@ -26,13 +26,14 @@ use std::time::{Instant, Duration};
 use diesel::pg::PgConnection;
 use dotenv::dotenv;
 use minimp3::{Decoder, Frame};
+use num_rational::Ratio;
 use signal_hook::{iterator::Signals, SIGHUP};
 
-use stream::{BroadcastEncoder, BroadcastError, StreamOutput, SAMPLE_RATE};
+use stream::{BroadcastEncoder, BroadcastError, StreamOutput};
 
 struct Reader<T: Read> {
     epoch: Instant,
-    samples: usize,
+    elapsed: Ratio<u64>,
     decoder: Decoder<T>,
 }
 
@@ -40,7 +41,7 @@ impl<T> Reader<T> where T: Read + Seek {
     pub fn new(decoder: Decoder<T>) -> Self {
         Reader {
             epoch: Instant::now(),
-            samples: 0,
+            elapsed: Ratio::new(0, 1),
             decoder,
         }
     }
@@ -55,15 +56,11 @@ impl<T> Reader<T> where T: Read + Seek {
         }
 
         let frame = self.decoder.next_frame()?;
+        let elapsed_nanos = (self.elapsed * Ratio::new(1_000_000_000, 1)).to_integer();
+        let until = self.epoch + Duration::from_nanos(elapsed_nanos);
+        let sample_count = frame.data.len() / frame.channels;
 
-        if frame.sample_rate != SAMPLE_RATE as i32 {
-            // XXX: we don't support variable sample rates at the moment. that shit is just way too hard
-            panic!("expected frame.sample_rate to be {}, was {}", SAMPLE_RATE, frame.sample_rate);
-        }
-
-        let until = self.epoch + Duration::from_millis(self.samples as u64 * 1_000 / SAMPLE_RATE as u64);
-
-        self.samples += frame.data.len() / frame.channels;
+        self.elapsed += Ratio::new(sample_count as u64, frame.sample_rate as u64);
 
         sleep_until(until);
 
