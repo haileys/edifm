@@ -105,7 +105,7 @@
                 button.innerHTML = "&#x25b6; Listen now";
             } else {
                 button.innerHTML = "loading...";
-                audio = new Audio("https://edifm.org/live.mp3");
+                audio = new Audio("https://edifm.org/live.mp3?" + Date.now());
                 audio.play();
                 audio.addEventListener("playing", function() {
                     button.innerHTML = "&#x25a0;";
