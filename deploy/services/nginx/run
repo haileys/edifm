@@ -1,2 +1,2 @@
 #!/bin/bash -e
-log-service nginx -- nginx -c /etc/nginx/nginx.conf
+exec log-service nginx -- nginx -c /etc/nginx/nginx.conf

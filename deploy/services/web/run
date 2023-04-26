@@ -3,4 +3,4 @@ cd /srv/web
 export DATABASE_URL=sqlite3:/data/edifm.db
 export EDIFM_DOMAIN=edifm.fly.dev
 export TZ=Australia/Melbourne
-log-service web -- bundle exec puma -b tcp://127.0.0.1:8002/ -e production
+exec log-service web -- bundle exec puma -b tcp://127.0.0.1:8002/ -e production

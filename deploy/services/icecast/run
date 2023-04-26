@@ -1,2 +1,2 @@
 #!/bin/bash -e
-log-service icecast -- icecast2 -c /etc/icecast2/icecast.xml
+exec log-service icecast -- icecast2 -c /etc/icecast2/icecast.xml
