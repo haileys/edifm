@@ -1,0 +1,72 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: $0 database-file" >&2
+    echo >&2
+    echo "migrates database-file up to date, creating if not exists" >&2
+    exit 1
+fi
+
+DATABASE_FILE="$1"
+
+all-migrations() {
+    ls migrations | grep -E '^[[:digit:]]+_.*\.sql$' | cut -d_ -f1
+}
+
+current-schema-versions() {
+    sqlite3 "$DATABASE_FILE" "select version from schema_migrations" 2>/dev/null || true
+}
+
+pending-migrations() {
+    comm -23 <(all-migrations) <(current-schema-versions) | sort
+}
+
+execute-sql() {
+    local sql="$1"
+    sqlite3 "$DATABASE_FILE" "$sql" </dev/null
+}
+
+initialize-schema() {
+    execute-sql "
+        BEGIN TRANSACTION;
+        CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT UNIQUE);
+        COMMIT;
+    "
+}
+
+migration-sql() {
+    local version="$1"
+    local file="$2"
+
+    echo "BEGIN TRANSACTION;"
+    cat "$file"
+    echo "INSERT INTO schema_migrations VALUES ('$version');"
+    echo "COMMIT;"
+}
+
+do-migration() {
+    local files=("migrations/$migration"*.sql)
+
+    if [ "${#files[@]}" -gt 1 ]; then
+        echo "error: ambiguous migration file for version $migration" >&2
+        exit 1
+    fi
+
+    local file="${files[0]}"
+
+    echo "migrating $file"
+    execute-sql "$(migration-sql "$migration" "$file")"
+}
+
+main() {
+    initialize-schema
+
+    pending-migrations | while read migration; do
+        do-migration "$migration"
+    done
+}
+
+main

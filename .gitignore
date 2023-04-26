@@ -3,5 +3,5 @@
 /tmp
 /web/.bundle
 /web/vendor/gems
+/edifm.db
 *.swp
-.DS_Store

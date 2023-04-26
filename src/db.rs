@@ -1,24 +1,20 @@
-pub mod schema;
-
 use std::env;
 
-use chrono::{Local, DateTime, NaiveTime, Timelike};
-use diesel::prelude::*;
-use diesel::pg::PgConnection;
+use chrono::{Local, NaiveTime, Timelike};
 use rand::seq::SliceRandom;
 
-pub fn connect() -> PgConnection {
+pub fn connect() -> rusqlite::Connection {
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
 
-    PgConnection::establish(&database_url)
+    rusqlite::Connection::open(&database_url)
         .expect(&format!("Error connecting to {}", database_url))
 }
 
 pub mod models {
     use chrono::NaiveTime;
 
-    #[derive(Queryable, Debug)]
+    #[derive(Debug)]
     pub struct Program {
         pub id: i32,
         pub name: String,
@@ -26,7 +22,7 @@ pub mod models {
         pub ends_at: NaiveTime,
     }
 
-    #[derive(Queryable, Debug)]
+    #[derive(Debug)]
     pub struct Recording {
         pub id: i32,
         pub filename: String,
@@ -36,72 +32,87 @@ pub mod models {
     }
 }
 
-pub fn find_recording(conn: &PgConnection, recording_id: i32)
-    -> Result<models::Recording, diesel::result::Error>
+
+pub fn find_recording(conn: &rusqlite::Connection, recording_id: i64)
+    -> Result<models::Recording, rusqlite::Error>
 {
-    schema::recordings::table.find(recording_id).first(conn)
+    conn.prepare("SELECT id, filename, title, artist, link FROM recordings WHERE id = ?1")?
+        .query_row([recording_id], |row| {
+            Ok(models::Recording {
+                id: row.get(0)?,
+                filename: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                link: row.get(4)?
+            })
+        })
 }
 
-pub fn select_next_recording(conn: &PgConnection)
-    -> Result<Option<(models::Program, models::Recording)>, diesel::result::Error>
+pub fn find_program(conn: &rusqlite::Connection, program_id: i64)
+    -> Result<models::Program, rusqlite::Error>
 {
-    use diesel::dsl::sql;
-    use diesel::sql_types::Integer;
+    conn.prepare("SELECT id, name, starts_at, ends_at FROM programs WHERE id = ?1")?
+        .query_row([program_id], |row| {
+            Ok(models::Program {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                starts_at: get_naivetime(row, 2)?,
+                ends_at: get_naivetime(row, 3)?,
+            })
+        })
+}
 
+pub fn select_next_recording(conn: &rusqlite::Connection)
+    -> Result<Option<(models::Program, models::Recording)>, rusqlite::Error>
+{
     let now_subsec = Local::now().time();
     let now = NaiveTime::from_hms_opt(now_subsec.hour(), now_subsec.minute(), now_subsec.second()).unwrap();
 
-    let recently_played = schema::plays::table
-        .order(schema::plays::id.desc())
-        .select(schema::plays::recording_id)
-        .limit(5)
-        .get_results::<i32>(conn)?;
-
-    let query = schema::recordings::table
-        .inner_join(schema::recording_tags::table.on(schema::recordings::id.eq(schema::recording_tags::recording_id)))
-        .inner_join(schema::program_tags::table.on(schema::program_tags::tag_id.eq(schema::recording_tags::tag_id)))
-        .inner_join(schema::programs::table.on(schema::programs::id.eq(schema::program_tags::program_id)))
-        .left_join(schema::plays::table.on(schema::plays::recording_id.eq(schema::recordings::id)))
-        .group_by((schema::programs::id, schema::recordings::id))
-        .order(sql::<Integer>("COUNT(plays.*)").asc())
-        .filter(schema::programs::starts_at.le(now))
-        .filter(schema::programs::ends_at.ge(now))
-        .filter(schema::recordings::id.ne_all(&recently_played))
-        .limit(8)
-        .select((schema::programs::id, schema::recordings::id));
-
-    let results = query.get_results::<(i32, i32)>(conn)?;
+    let results = conn
+        .prepare("
+            SELECT programs.id, recordings.id FROM recordings
+            INNER JOIN recording_tags ON recording_tags.recording_id = recordings.id
+            INNER JOIN program_tags ON program_tags.tag_id = recording_tags.tag_id
+            INNER JOIN programs ON programs.id = program_tags.program_id
+            LEFT JOIN plays ON plays.recording_id = recordings.id
+            WHERE starts_at <= ?1 AND ends_at >= ?1 AND recordings.id NOT IN (
+                SELECT recording_id FROM plays ORDER BY id DESC LIMIT 5
+            )
+            GROUP BY programs.id, recordings.id
+            ORDER BY COUNT(plays.id) ASC
+            LIMIT 8
+        ")?
+        .query_map([now.format("%T").to_string()], |row|
+            Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<(i64, i64)>, _>>()?;
 
     let selection = results.choose(&mut rand::thread_rng());
 
     match selection {
         None => Ok(None),
         Some((program_id, recording_id)) => {
-            let program = schema::programs::table.find(program_id).first(conn)?;
+            let program = find_program(conn, *program_id)?;
             let recording = find_recording(conn, *recording_id)?;
             Ok(Some((program, recording)))
         }
     }
 }
 
-pub fn insert_play_record(conn: &PgConnection, program: &models::Program, recording: &models::Recording)
-    -> Result<(), diesel::result::Error>
+pub fn insert_play_record(conn: &rusqlite::Connection, program: &models::Program, recording: &models::Recording)
+    -> Result<(), rusqlite::Error>
 {
-    use schema::plays;
-
-    #[derive(Insertable)]
-    #[table_name = "plays"]
-    struct Play {
-        recording_id: i32,
-        program_id: i32,
-        started_at: DateTime<Local>,
-    }
-
-    diesel::insert_into(schema::plays::table).values(Play {
-        recording_id: recording.id,
-        program_id: program.id,
-        started_at: Local::now(),
-    }).execute(conn)?;
+    conn.prepare("INSERT INTO plays (recording_id, program_id, started_at) VALUES (?1, ?2, ?3)")?
+        .execute((recording.id, program.id, Local::now().format("%+").to_string()))?;
 
     Ok(())
+}
+
+fn get_naivetime(row: &rusqlite::Row, idx: usize) -> rusqlite::Result<NaiveTime> {
+    let text = row.get_ref(idx)?.as_str()?;
+
+    NaiveTime::parse_from_str(text, "%T")
+        .map_err(|err| {
+            let ty = rusqlite::types::Type::Text;
+            rusqlite::Error::FromSqlConversionFailure(idx, ty, Box::new(err))
+        })
 }

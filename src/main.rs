@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate diesel;
-
 extern crate chrono;
 extern crate crossbeam;
 extern crate dotenv;
@@ -23,7 +20,6 @@ use std::sync::atomic::{Ordering, AtomicBool};
 use std::thread;
 use std::time::{Instant, Duration};
 
-use diesel::pg::PgConnection;
 use dotenv::dotenv;
 use minimp3::{Decoder, Frame};
 use num_rational::Ratio;
@@ -81,7 +77,7 @@ impl<T> Reader<T> where T: Read + Seek {
 enum Error {
     Io(io::Error),
     Broadcast(BroadcastError),
-    Database(diesel::result::Error),
+    Database(rusqlite::Error),
 }
 
 enum PlayResult {
@@ -118,12 +114,12 @@ impl ResumeInfo {
 
 struct Station<'a> {
     run: &'a AtomicBool,
-    conn: PgConnection,
+    conn: rusqlite::Connection,
     outputs: Vec<Box<dyn StreamOutput>>,
 }
 
 impl<'a> Station<'a> {
-    pub fn new(conn: PgConnection, run: &'a AtomicBool, outputs: Vec<Box<dyn StreamOutput>>) -> Self {
+    pub fn new(conn: rusqlite::Connection, run: &'a AtomicBool, outputs: Vec<Box<dyn StreamOutput>>) -> Self {
         Station { run, conn, outputs }
     }
 
@@ -213,7 +209,7 @@ fn outputs() -> Result<Vec<Box<dyn StreamOutput>>, io::Error> {
     }
 }
 
-fn run_station(conn: PgConnection, run: &AtomicBool, resume: Option<ResumeInfo>) -> Result<ResumeInfo, Error> {
+fn run_station(conn: rusqlite::Connection, run: &AtomicBool, resume: Option<ResumeInfo>) -> Result<ResumeInfo, Error> {
     let outputs = outputs().map_err(Error::Io)?;
     Station::new(conn, run, outputs).run(resume)
 }
@@ -221,10 +217,10 @@ fn run_station(conn: PgConnection, run: &AtomicBool, resume: Option<ResumeInfo>)
 #[derive(Debug)]
 enum ParseResumeInfoError {
     MalformedEnv,
-    Database(diesel::result::Error),
+    Database(rusqlite::Error),
 }
 
-fn parse_resume_info(conn: &PgConnection, resume_info_str: &str) -> Result<ResumeInfo, ParseResumeInfoError> {
+fn parse_resume_info(conn: &rusqlite::Connection, resume_info_str: &str) -> Result<ResumeInfo, ParseResumeInfoError> {
     let colon_pos = resume_info_str.find(':')
         .ok_or(ParseResumeInfoError::MalformedEnv)?;
 
