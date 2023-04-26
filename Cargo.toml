@@ -14,3 +14,4 @@ minimp3 = { git = "https://github.com/haileys/minimp3-rs", branch = "reader-acce
 rand = "0.6"
 signal-hook = "0.1"
 num-rational = "0.2"
+sqlx = { version = "0.6.3", features = ["runtime-tokio-rustls", "sqlite"] }
