@@ -4,6 +4,8 @@ require_relative "lib/models"
 
 ActiveRecord::Base.establish_connection(ENV.fetch("DATABASE_URL"))
 
+EDIFM_DOMAIN = ENV.fetch("EDIFM_DOMAIN")
+
 get "/" do
   @play = Play.latest
   erb :index

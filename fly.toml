@@ -1,0 +1,23 @@
+# fly.toml app configuration file generated for edifm on 2023-04-27T01:06:31+10:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "edifm"
+primary_region = "syd"
+kill_signal = "SIGTERM"
+kill_timeout = "5s"
+
+# [deploy]
+#   release_command = "-c exec /srv/script/migrate /data/edifm.db"
+
+[http_service]
+internal_port = 8001
+
+[env]
+  PRIMARY_REGION = "syd"
+
+[[mounts]]
+  source = "data_machines"
+  destination = "/data"
+  processes = ["app"]

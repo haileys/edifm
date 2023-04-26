@@ -3,4 +3,5 @@ cd /srv
 export DATABASE_URL=/data/edifm.db
 export EDIFM_TARGET=icecast
 export EDIFM_CATALOG=/data/catalog
+export TZ=Australia/Melbourne
 log-service edifm -- ./edifm

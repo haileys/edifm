@@ -48,7 +48,7 @@ RUN mkdir -p /srv/migrations
 COPY migrations /srv/migrations
 
 RUN mkdir -p /srv/script
-COPY script /srv/script/migrate
+COPY script /srv/script
 
 ADD deploy/icecast.xml /etc/icecast2/icecast.xml
 ADD deploy/nginx.conf /etc/nginx/nginx.conf

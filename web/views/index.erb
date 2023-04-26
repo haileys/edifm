@@ -86,8 +86,8 @@
         </p>
         <h2>stream links</h2>
         <p>
-            <a class="stream-link" href="https://edifm.org/live.mp3">high quality (320kbps)</a>
-            <a class="stream-link" href="https://edifm.org/low.mp3">low quality (128kbps)</a>
+            <a class="stream-link" href="https://<%= EDIFM_DOMAIN %>/live.mp3">high quality (320kbps)</a>
+            <a class="stream-link" href="https://<%= EDIFM_DOMAIN %>/low.mp3">low quality (128kbps)</a>
         </p>
         <h2>get in touch</h2>
         <p>got a set you'd like to hear on ediFM? send it through to <a href="mailto:contact@edifm.org">contact@edifm.org</a> :)</p>
@@ -106,7 +106,7 @@
                 button.innerHTML = "&#x25b6; Listen now";
             } else {
                 button.innerHTML = "loading...";
-                audio = new Audio("https://edifm.org/live.mp3?" + Date.now());
+                audio = new Audio("https://<%= EDIFM_DOMAIN %>/live.mp3?" + Date.now());
                 audio.play();
                 audio.addEventListener("playing", function() {
                     button.innerHTML = "&#x25a0;";
