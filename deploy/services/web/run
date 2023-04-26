@@ -1,0 +1,4 @@
+#!/bin/bash -e
+cd /srv/web
+export DATABASE_URL=sqlite3:/data/edifm.db
+log-service web -- bundle exec puma -b tcp://127.0.0.1:8002/ -e production

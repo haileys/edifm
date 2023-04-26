@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+if [ "$#" -lt 3 ] || [[ "$2" != "--" ]]; then
+    echo "usage: log-service service-name -- command..." >&2
+    exit 1
+fi
+
+prefix="$(printf "\e[37;1m[\e[34m%s\e[0;1m]\e[0m" "$1")"
+shift
+shift
+
+exec "$@" 2>&1 | while read line; do
+    echo "$prefix $line"
+done

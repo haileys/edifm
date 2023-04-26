@@ -1,0 +1,6 @@
+#!/bin/bash -e
+cd /srv
+export DATABASE_URL=/data/edifm.db
+export EDIFM_TARGET=icecast
+export EDIFM_CATALOG=/data/catalog
+log-service edifm -- ./edifm

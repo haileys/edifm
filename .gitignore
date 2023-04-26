@@ -2,6 +2,7 @@
 /target
 /tmp
 /web/.bundle
-/web/vendor/gems
+/web/vendor/bundle
+/catalog
 /edifm.db
 *.swp
