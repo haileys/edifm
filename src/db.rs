@@ -48,8 +48,6 @@ pub fn select_next_recording(conn: &PgConnection)
     use diesel::dsl::sql;
     use diesel::sql_types::Integer;
 
-    use schema;
-
     let now_subsec = Local::now().time();
     let now = NaiveTime::from_hms(now_subsec.hour(), now_subsec.minute(), now_subsec.second());
 

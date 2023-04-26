@@ -119,11 +119,11 @@ impl ResumeInfo {
 struct Station<'a> {
     run: &'a AtomicBool,
     conn: PgConnection,
-    outputs: Vec<Box<StreamOutput>>,
+    outputs: Vec<Box<dyn StreamOutput>>,
 }
 
 impl<'a> Station<'a> {
-    pub fn new(conn: PgConnection, run: &'a AtomicBool, outputs: Vec<Box<StreamOutput>>) -> Self {
+    pub fn new(conn: PgConnection, run: &'a AtomicBool, outputs: Vec<Box<dyn StreamOutput>>) -> Self {
         Station { run, conn, outputs }
     }
 
@@ -191,24 +191,24 @@ impl<'a> Station<'a> {
     }
 }
 
-fn outputs() -> Result<Vec<Box<StreamOutput>>, io::Error> {
+fn outputs() -> Result<Vec<Box<dyn StreamOutput>>, io::Error> {
     match env::var("EDIFM_TARGET").as_ref().map(String::as_str) {
         Ok("icecast") => Ok(vec![
             Box::new(
                 BroadcastEncoder::new(320,
                     icecast::SourceStream::new("127.0.0.1:8000", "/live.mp3")?)
-            ) as Box<StreamOutput>,
+            ) as Box<dyn StreamOutput>,
 
             Box::new(
                 BroadcastEncoder::new(128,
                     icecast::SourceStream::new("127.0.0.1:8000", "/low.mp3")?)
-            ) as Box<StreamOutput>,
+            ) as Box<dyn StreamOutput>,
         ]),
         _ => Ok(vec![
             Box::new(
                 BroadcastEncoder::new(320,
                     OpenOptions::new().create(true).append(true).open("stream.mp3")?)
-            ) as Box<StreamOutput>,
+            ) as Box<dyn StreamOutput>,
         ]),
     }
 }
