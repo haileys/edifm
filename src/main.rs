@@ -13,9 +13,7 @@ mod stream;
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::atomic::{Ordering, AtomicBool};
 use std::thread;
 use std::time::{Instant, Duration};
@@ -23,7 +21,8 @@ use std::time::{Instant, Duration};
 use dotenv::dotenv;
 use minimp3::{Decoder, Frame};
 use num_rational::Ratio;
-use signal_hook::{iterator::Signals, SIGHUP};
+use rusqlite::OptionalExtension;
+use signal_hook::{iterator::Signals, SIGTERM};
 
 use stream::{BroadcastEncoder, BroadcastError, StreamOutput};
 
@@ -112,6 +111,12 @@ impl ResumeInfo {
     }
 }
 
+#[derive(Debug)]
+struct StationTerminate {
+    conn: rusqlite::Connection,
+    resume: ResumeInfo,
+}
+
 struct Station<'a> {
     run: &'a AtomicBool,
     conn: rusqlite::Connection,
@@ -159,7 +164,7 @@ impl<'a> Station<'a> {
             .map_err(Error::Io)
     }
 
-    pub fn run(&mut self, mut resume: Option<ResumeInfo>) -> Result<ResumeInfo, Error> {
+    pub fn run(mut self, mut resume: Option<ResumeInfo>) -> Result<StationTerminate, Error> {
         loop {
             let next = resume.take()
                 .map(|resume_info| resume_info
@@ -178,7 +183,8 @@ impl<'a> Station<'a> {
                     match self.play(reader)? {
                         PlayResult::Eof => continue,
                         PlayResult::Stopped(pos) => {
-                            return Ok(ResumeInfo { recording, file_pos: pos })
+                            let resume = ResumeInfo { recording, file_pos: pos };
+                            return Ok(StationTerminate { conn: self.conn, resume });
                         }
                     }
                 }
@@ -209,33 +215,29 @@ fn outputs() -> Result<Vec<Box<dyn StreamOutput>>, io::Error> {
     }
 }
 
-fn run_station(conn: rusqlite::Connection, run: &AtomicBool, resume: Option<ResumeInfo>) -> Result<ResumeInfo, Error> {
+fn run_station(conn: rusqlite::Connection, run: &AtomicBool, resume: Option<ResumeInfo>) -> Result<StationTerminate, Error> {
     let outputs = outputs().map_err(Error::Io)?;
     Station::new(conn, run, outputs).run(resume)
 }
 
-#[derive(Debug)]
-enum ParseResumeInfoError {
-    MalformedEnv,
-    Database(rusqlite::Error),
+fn load_resume(conn: &rusqlite::Connection) -> Result<Option<ResumeInfo>, rusqlite::Error> {
+    let Some((recording_id, file_pos)) = conn
+        .prepare("SELECT recording_id, file_pos FROM resume WHERE rowid = 1")?
+        .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()? else { return Ok(None); };
+
+    conn.execute("DELETE FROM resume WHERE rowid = 1", [])?;
+
+    let recording = db::find_recording(conn, recording_id)?;
+
+    Ok(Some(ResumeInfo { recording, file_pos }))
 }
 
-fn parse_resume_info(conn: &rusqlite::Connection, resume_info_str: &str) -> Result<ResumeInfo, ParseResumeInfoError> {
-    let colon_pos = resume_info_str.find(':')
-        .ok_or(ParseResumeInfoError::MalformedEnv)?;
+fn save_resume(conn: &rusqlite::Connection, info: &ResumeInfo) -> Result<(), rusqlite::Error> {
+    conn.prepare("REPLACE INTO resume (rowid, recording_id, file_pos) VALUES (1, ?1, ?2)")?
+        .execute((info.recording.id, info.file_pos))?;
 
-    let (recording_id_str, file_pos_str) = resume_info_str.split_at(colon_pos);
-
-    let recording_id = recording_id_str.parse()
-        .map_err(|_| ParseResumeInfoError::MalformedEnv)?;
-
-    let file_pos = file_pos_str[1..].parse()
-        .map_err(|_| ParseResumeInfoError::MalformedEnv)?;
-
-    let recording = db::find_recording(conn, recording_id)
-        .map_err(ParseResumeInfoError::Database)?;
-
-    Ok(ResumeInfo { recording, file_pos })
+    Ok(())
 }
 
 fn main() -> Result<(), Error> {
@@ -243,18 +245,15 @@ fn main() -> Result<(), Error> {
 
     let conn = db::connect();
 
-    let signals = Signals::new(&[SIGHUP]).expect("Signals::new");
+    let signals = Signals::new(&[SIGTERM]).expect("Signals::new");
     let run = AtomicBool::new(true);
 
-    let resume = match env::var("EDIFM_RESUME") {
-        Ok(val) => match parse_resume_info(&conn, &val) {
-            Ok(resume_info) => Some(resume_info),
-            Err(e) => {
-                eprintln!("could not resume from EDIFM_RESUME: {:?}", e);
-                None
-            }
-        },
-        Err(_) => None,
+    let resume = match load_resume(&conn) {
+        Ok(val) => val,
+        Err(err) => {
+            eprintln!("failed to load resume: {:?}", err);
+            None
+        }
     };
 
     crossbeam::scope(|scope| {
@@ -265,23 +264,23 @@ fn main() -> Result<(), Error> {
 
         for signal in signals.forever() {
             match signal {
-                SIGHUP => {
-                    println!("SIGHUP received, gracefully restarting...");
+                SIGTERM => {
+                    println!("SIGTERM received, saving resume info and stopping...");
 
                     // tell station to stop
                     run.store(false, Ordering::Relaxed);
 
                     // collect resume info when station quiesces
-                    let resume_info = station_thread.join().expect("station_thread.join");
+                    let terminate = station_thread.join().expect("station_thread.join");
 
-                    // re-exec ourselves with the same command line we were invoked with
-                    let args = std::env::args_os().collect::<Vec<_>>();
-                    let err = Command::new(&args[0])
-                        .env("EDIFM_RESUME", format!("{}:{}", resume_info.recording.id, resume_info.file_pos))
-                        .args(&args[1..])
-                        .exec();
+                    match save_resume(&terminate.conn, &terminate.resume) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            eprintln!("failed to save resume: {:?}", err);
+                        }
+                    }
 
-                    panic!("could not re-exec self! {:?}", err)
+                    break;
                 }
                 _ => {}
             }
