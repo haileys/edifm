@@ -205,7 +205,7 @@
 
         <!-- Note that if <chroot> is turned on below, these paths must both
              be relative to the new root, not the original root -->
-        <logdir>/var/log/icecast2</logdir>
+        <logdir>/dev</logdir>
         <webroot>/usr/share/icecast2/web</webroot>
         <adminroot>/usr/share/icecast2/admin</adminroot>
         <!-- <pidfile>/usr/share/icecast2/icecast.pid</pidfile> -->
@@ -229,8 +229,8 @@
     </paths>
 
     <logging>
-        <accesslog>access.log</accesslog>
-        <errorlog>error.log</errorlog>
+        <accesslog>stdout</accesslog>
+        <errorlog>stderr</errorlog>
         <!-- <playlistlog>playlist.log</playlistlog> -->
         <loglevel>3</loglevel> <!-- 4 Debug, 3 Info, 2 Warn, 1 Error -->
         <logsize>10000</logsize> <!-- Max size of a logfile -->
